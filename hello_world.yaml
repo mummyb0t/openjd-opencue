@@ -1,0 +1,24 @@
+# Minimal test job — just echoes hello world per frame
+#
+# Dry-run:
+#   python openjd_to_opencue.py examples/hello_world.yaml --show testshow --shot test01 --dry-run
+#
+# Submit:
+#   python openjd_to_opencue.py examples/hello_world.yaml --show testshow --shot test01
+
+specificationVersion: jobtemplate-2023-09
+name: "HelloWorld"
+
+steps:
+  - name: SayHello
+    parameterSpace:
+      taskParameterDefinitions:
+        - name: Frame
+          type: INT
+          range: "1-10"
+    script:
+      actions:
+        onRun:
+          command: echo
+          args:
+            - "hello world - frame {{Task.Param.Frame}}"

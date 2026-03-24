@@ -1,0 +1,65 @@
+# Simple FFmpeg transcode pipeline: h264 → webm proxy
+# Pure command-line — no DCC apps needed.
+#
+# Submit with:
+#   python openjd_to_opencue.py examples/ffmpeg_transcode.yaml \
+#       --show commercials --shot spot_01 --dry-run \
+#       -p InputFile=/media/master/spot_01.mov
+
+specificationVersion: jobtemplate-2023-09
+name: "Transcode_{{Param.JobLabel}}"
+
+parameterDefinitions:
+  - name: InputFile
+    type: PATH
+  - name: OutputDir
+    type: PATH
+    default: /deliveries/transcodes
+  - name: JobLabel
+    type: STRING
+    default: transcode_job
+
+steps:
+  # ── Step 1: High-quality h264 ──
+  - name: h264
+    script:
+      actions:
+        onRun:
+          command: ffmpeg
+          args:
+            - "-y"
+            - "-i"
+            - "{{Param.InputFile}}"
+            - "-c:v"
+            - "libx264"
+            - "-crf"
+            - "18"
+            - "-preset"
+            - "slow"
+            - "-c:a"
+            - "aac"
+            - "-b:a"
+            - "192k"
+            - "{{Param.OutputDir}}/{{Param.JobLabel}}_h264.mp4"
+
+  # ── Step 2: WebM proxy (depends on h264) ──
+  - name: webm_proxy
+    dependencies:
+      - dependsOn: h264
+    script:
+      actions:
+        onRun:
+          command: ffmpeg
+          args:
+            - "-y"
+            - "-i"
+            - "{{Param.OutputDir}}/{{Param.JobLabel}}_h264.mp4"
+            - "-c:v"
+            - "libvpx-vp9"
+            - "-crf"
+            - "30"
+            - "-b:v"
+            - "0"
+            - "-c:a"
+            - "libopus"
+            - "{{Param.OutputDir}}/{{Param.JobLabel}}_proxy.webm"
