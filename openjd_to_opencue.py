@@ -255,6 +255,7 @@ except ImportError:
 _HAS_OPENCUE = False
 try:
     import outline
+    import outline.cuerun
     import outline.modules.shell
     import opencue
 
@@ -1090,9 +1091,13 @@ def emit_pyoutline_code(job: ConvertedJob) -> str:
         lines.append(f"    job.add_layer({var})")
 
     lines.append("")
-    lines.append("    # Submit")
-    lines.append("    job.setup()")
-    lines.append("    job.launch()")
+    lines.append("    # Submit via OutlineLauncher (use_pycuerun=False runs commands directly)")
+    lines.append("    import outline.cuerun")
+    lines.append("    launcher = outline.cuerun.OutlineLauncher(job)")
+    lines.append(f'    launcher.set_flag("show", "{job.show}")')
+    lines.append(f'    launcher.set_flag("shot", "{job.shot}")')
+    lines.append(f'    launcher.set_flag("user", "{job.user}")')
+    lines.append("    launcher.launch(use_pycuerun=False)")
     lines.append('    print(f"Submitted job: {job.name}")')
     lines.append("")
     lines.append("")
@@ -1193,10 +1198,73 @@ def submit_to_opencue(job: ConvertedJob) -> None:
     for layer in job.layers:
         ol.add_layer(layer_objects[layer.name])
 
-    # Submit to OpenCue
-    ol.setup()
-    ol.launch()
-    print(f"Submitted job '{job.name}' to OpenCue ({len(job.layers)} layers)")
+    # Submit to OpenCue via OutlineLauncher.
+    #
+    # PyOutline doesn't expose a simple job.launch() method. Instead it
+    # uses a launcher/backend system:
+    #   1. OutlineLauncher wraps the Outline and holds submission settings
+    #   2. launcher.set_flag() configures show/shot/user/facility
+    #   3. launcher.launch() serialises the job to XML and calls
+    #      opencue.api.launchSpecAndWait() on the backend
+    #
+    # We use use_pycuerun=False so commands run directly on the render
+    # host rather than being wrapped in pycuerun (which would require
+    # the Outline file to exist on a shared filesystem).
+    launcher = outline.cuerun.OutlineLauncher(ol)
+    launcher.set_flag("show", job.show)
+    launcher.set_flag("shot", job.shot)
+    launcher.set_flag("user", job.user)
+
+    # --- Debug: print the XML spec that will be sent to Cuebot ---
+    try:
+        xml_spec = launcher.serialize(use_pycuerun=False)
+        print("\n[DEBUG] Cuebot host(s):", os.environ.get("CUEBOT_HOSTS", "(not set)"))
+        print("\n[DEBUG] Serialised job spec XML:")
+        print("-" * 60)
+
+        # Pretty-print the XML for readability
+        from xml.dom.minidom import parseString
+        try:
+            pretty = parseString(xml_spec).toprettyxml(indent="  ")
+            print(pretty)
+        except Exception:
+            # If pretty-print fails, dump raw
+            print(xml_spec)
+
+        print("-" * 60)
+    except Exception as e:
+        print(f"\n[DEBUG] ERROR during serialisation: {type(e).__name__}: {e}",
+              file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+    # --- Submit ---
+    try:
+        jobs = launcher.launch(use_pycuerun=False)
+
+        # Inspect what came back
+        if jobs:
+            print(f"\n[DEBUG] launch() returned {len(jobs)} job(s):")
+            for j in jobs:
+                try:
+                    print(f"  - Name: {j.name()}")
+                    print(f"    ID:   {j.id()}")
+                    print(f"    State: {j.state()}")
+                except Exception:
+                    print(f"  - Job object: {j}")
+        else:
+            print("\n[DEBUG] WARNING: launch() returned empty/None — "
+                  "job may not have been submitted.", file=sys.stderr)
+
+        print(f"\nSubmitted job '{job.name}' to OpenCue ({len(job.layers)} layers)")
+
+    except Exception as e:
+        print(f"\n[DEBUG] ERROR during submission: {type(e).__name__}: {e}",
+              file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 # ===================================================================
