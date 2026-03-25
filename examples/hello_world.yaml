@@ -1,10 +1,10 @@
 # Minimal test job — just echoes hello world per frame
 #
 # Dry-run:
-#   python openjd_to_opencue.py examples/hello_world.yaml --show testshow --shot test01 --dry-run
+#   python openjd_to_opencue.py examples/hello_world.yaml --show testing --shot test01 --dry-run
 #
 # Submit:
-#   python openjd_to_opencue.py examples/hello_world.yaml --show testshow --shot test01
+#   python openjd_to_opencue.py examples/hello_world.yaml --show testing --shot test01
 
 specificationVersion: jobtemplate-2023-09
 name: "HelloWorld"
